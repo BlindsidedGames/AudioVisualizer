@@ -1,0 +1,61 @@
+# Virtual environments
+venv/
+venv312/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.spec
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Output files
+outputs/
+*.mp4
+*.avi
+*.mkv
+*.mov
+
+# Test files
+test_*.png
+test_*.mp4
+
+# Logs
+*.log
+
+# PyInstaller
+*.manifest
+build_exe.spec
+
+# FFmpeg binaries (users download separately)
+ffmpeg/
+
+# Audio tracks (copyrighted)
+Tracks/
+
+# Claude temp files
+tmpclaude-*
+.claude/
+
+# Misc
+nul
+build.py
+test_cupy.py
+run_cuda.bat
