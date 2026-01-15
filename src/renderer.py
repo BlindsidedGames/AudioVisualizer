@@ -105,6 +105,7 @@ uniform float mids;
 uniform float highs;
 uniform float volume;
 uniform float beat;
+uniform float audio_time;
 
 out vec4 _fragColor;
 """
@@ -155,6 +156,8 @@ void main() {
             self.program['volume'].value = audio_data.get('volume', 0.0)
         if 'beat' in self.program:
             self.program['beat'].value = audio_data.get('beat', 0.0)
+        if 'audio_time' in self.program:
+            self.program['audio_time'].value = audio_data.get('audio_time', 0.0)
 
         # Render
         self.vao.render(moderngl.TRIANGLE_STRIP)
