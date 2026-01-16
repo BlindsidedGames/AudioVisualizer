@@ -24,5 +24,8 @@ if not exist "venv\Scripts\python.exe" (
     exit /b 1
 )
 
+:: Clear Python cache to ensure fresh state
+if exist "src\__pycache__" rd /s /q "src\__pycache__" 2>nul
+
 :: Launch the GUI
 start "" "venv\Scripts\pythonw.exe" run_gui.py
