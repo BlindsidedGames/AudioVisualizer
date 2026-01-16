@@ -247,38 +247,49 @@ void main() {
     def close(self):
         """Clean up resources."""
         # Release OpenGL resources
-        if self.vao:
-            self.vao.release()
-            self.vao = None
-        if self.program:
-            self.program.release()
-            self.program = None
-        if self.fbo:
-            self.fbo.release()
-            self.fbo = None
-        if self.quad:
-            self.quad.release()
-            self.quad = None
-        if self.ctx:
-            self.ctx.release()
-            self.ctx = None
-        if self.window:
-            self.window.close()
-            self.window = None
+        try:
+            if self.vao:
+                self.vao.release()
+                self.vao = None
+            if self.program:
+                self.program.release()
+                self.program = None
+            if self.fbo:
+                self.fbo.release()
+                self.fbo = None
+            if self.quad:
+                self.quad.release()
+                self.quad = None
+        except Exception:
+            pass  # Ignore OpenGL errors during cleanup
+
+        try:
+            if self.ctx:
+                self.ctx.release()
+                self.ctx = None
+        except Exception:
+            pass
+
+        try:
+            if self.window:
+                self.window.close()
+                self.window = None
+        except Exception:
+            pass
 
         # Free CuPy GPU memory
-        if hasattr(self, 'gpu_rgba') and self.gpu_rgba is not None:
-            del self.gpu_rgba
-            self.gpu_rgba = None
-        if hasattr(self, 'gpu_rgb') and self.gpu_rgb is not None:
-            del self.gpu_rgb
-            self.gpu_rgb = None
-
-        # Force CuPy memory pool cleanup
         try:
+            if hasattr(self, 'gpu_rgba') and self.gpu_rgba is not None:
+                del self.gpu_rgba
+                self.gpu_rgba = None
+            if hasattr(self, 'gpu_rgb') and self.gpu_rgb is not None:
+                del self.gpu_rgb
+                self.gpu_rgb = None
+
+            # Force CuPy memory pool cleanup
             cp.get_default_memory_pool().free_all_blocks()
             cp.get_default_pinned_memory_pool().free_all_blocks()
-        except:
+        except Exception:
             pass
 
 
