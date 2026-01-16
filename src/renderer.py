@@ -178,11 +178,19 @@ void main() {
         """Clean up OpenGL resources."""
         if self.vao:
             self.vao.release()
+            self.vao = None
         if self.program:
             self.program.release()
+            self.program = None
         if self.fbo:
             self.fbo.release()
+            self.fbo = None
+        if self.quad:
+            self.quad.release()
+            self.quad = None
         if self.ctx:
             self.ctx.release()
+            self.ctx = None
         if self.window:
             self.window.close()
+            self.window = None

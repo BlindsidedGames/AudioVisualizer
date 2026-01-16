@@ -442,6 +442,9 @@ Requires an NVIDIA GPU with CUDA support."""
     def _render_worker(self, width: int, height: int):
         """Background worker for rendering."""
         import traceback
+        renderer = None
+        exporter = None
+
         try:
             from .audio import AudioAnalyzer
 
@@ -539,7 +542,9 @@ Requires an NVIDIA GPU with CUDA support."""
 
             self._update_progress("Finalizing video...", 0.95)
             success = exporter.finish()
+            exporter = None  # Mark as cleaned up
             renderer.close()
+            renderer = None  # Mark as cleaned up
 
             if success:
                 self._update_progress(f"Done! Saved to outputs/", 1.0)
@@ -553,6 +558,19 @@ Requires an NVIDIA GPU with CUDA support."""
             self._update_progress(error_msg, 0)
 
         finally:
+            # Always clean up resources, even on error
+            if renderer is not None:
+                try:
+                    renderer.close()
+                except Exception as cleanup_err:
+                    print(f"Error during renderer cleanup: {cleanup_err}")
+
+            if exporter is not None:
+                try:
+                    exporter.finish()
+                except Exception as cleanup_err:
+                    print(f"Error during exporter cleanup: {cleanup_err}")
+
             self.rendering = False
             self.after(0, lambda: self.render_btn.configure(
                 state="normal", text="Start Render"

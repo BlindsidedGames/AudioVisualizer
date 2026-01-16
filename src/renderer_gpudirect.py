@@ -10,14 +10,34 @@ Requires:
 """
 
 import os
+from pathlib import Path
+
+def _find_cuda_path():
+    """Find CUDA installation path dynamically."""
+    cuda_base = Path(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA")
+    if not cuda_base.exists():
+        return None
+
+    # Find all CUDA versions, prefer 12.x
+    versions = list(cuda_base.glob("v*"))
+    if not versions:
+        return None
+
+    # Sort by version (descending) - prefer newest
+    cuda12_versions = [v for v in versions if v.name.startswith("v12") or v.name.startswith("v13")]
+    if cuda12_versions:
+        return sorted(cuda12_versions, reverse=True)[0]
+
+    return sorted(versions, reverse=True)[0]
+
 # Set CUDA path before imports
-cuda_path = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6"
-os.environ["CUDA_PATH"] = cuda_path
-os.environ["PATH"] = cuda_path + r"\bin;" + os.environ.get("PATH", "")
+cuda_path = _find_cuda_path()
+if cuda_path:
+    os.environ["CUDA_PATH"] = str(cuda_path)
+    os.environ["PATH"] = str(cuda_path / "bin") + ";" + os.environ.get("PATH", "")
 
 import numpy as np
 import cupy as cp
-from pathlib import Path
 from threading import Thread
 from queue import Queue
 import subprocess
@@ -226,16 +246,40 @@ void main() {
 
     def close(self):
         """Clean up resources."""
+        # Release OpenGL resources
         if self.vao:
             self.vao.release()
+            self.vao = None
         if self.program:
             self.program.release()
+            self.program = None
         if self.fbo:
             self.fbo.release()
+            self.fbo = None
+        if self.quad:
+            self.quad.release()
+            self.quad = None
         if self.ctx:
             self.ctx.release()
+            self.ctx = None
         if self.window:
             self.window.close()
+            self.window = None
+
+        # Free CuPy GPU memory
+        if hasattr(self, 'gpu_rgba') and self.gpu_rgba is not None:
+            del self.gpu_rgba
+            self.gpu_rgba = None
+        if hasattr(self, 'gpu_rgb') and self.gpu_rgb is not None:
+            del self.gpu_rgb
+            self.gpu_rgb = None
+
+        # Force CuPy memory pool cleanup
+        try:
+            cp.get_default_memory_pool().free_all_blocks()
+            cp.get_default_pinned_memory_pool().free_all_blocks()
+        except:
+            pass
 
 
 class GPUDirectExporter:
