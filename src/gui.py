@@ -442,35 +442,23 @@ Requires an NVIDIA GPU with CUDA support."""
     def _render_worker(self, width: int, height: int):
         """Background worker for rendering."""
         import traceback
-        import importlib
         renderer = None
         exporter = None
 
         try:
-            # Reload renderer modules to pick up any changes and clear stale state
-            from . import audio
-            importlib.reload(audio)
             from .audio import AudioAnalyzer
 
             # Choose renderer based on capabilities
             if self.capabilities["cupy"]:
-                from . import renderer_gpudirect
-                importlib.reload(renderer_gpudirect)
                 from .renderer_gpudirect import GPUDirectRenderer as Renderer
                 from .renderer_gpudirect import GPUDirectExporter as Exporter
                 renderer_mode = "gpudirect"
             elif self.capabilities["cuda"]:
-                from . import renderer_cuda
-                importlib.reload(renderer_cuda)
                 from .renderer_cuda import CudaShaderRenderer as Renderer
                 from .renderer_cuda import HybridExporter as Exporter
                 renderer_mode = "cuda"
             else:
-                from . import renderer
-                importlib.reload(renderer)
                 from .renderer import ShaderRenderer as Renderer
-                from . import exporter as exp_module
-                importlib.reload(exp_module)
                 from .exporter import VideoExporter as Exporter
                 renderer_mode = "standard"
 
