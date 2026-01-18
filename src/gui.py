@@ -255,17 +255,27 @@ class VisualizerApp(ctk.CTk):
         )
         shader_label.pack(anchor="w", padx=15, pady=(15, 5))
 
+        shader_row = ctk.CTkFrame(shader_frame, fg_color="transparent")
+        shader_row.pack(fill="x", padx=15, pady=(0, 15))
+
         # Find available shaders
-        shader_dir = get_app_path() / "shaders"
-        shaders = [f.stem for f in shader_dir.glob("*.glsl")] if shader_dir.exists() else ["universe_within"]
+        shaders = self._get_shader_list()
 
         self.shader_combo = ctk.CTkComboBox(
-            shader_frame,
+            shader_row,
             values=shaders,
             width=200
         )
         self.shader_combo.set(shaders[0] if shaders else "universe_within")
-        self.shader_combo.pack(anchor="w", padx=15, pady=(0, 15))
+        self.shader_combo.pack(side="left")
+
+        refresh_btn = ctk.CTkButton(
+            shader_row,
+            text="Refresh",
+            command=self._refresh_shaders,
+            width=70
+        )
+        refresh_btn.pack(side="left", padx=(10, 0))
 
         # Duration section (for preview/testing)
         duration_frame = ctk.CTkFrame(container)
@@ -376,6 +386,24 @@ class VisualizerApp(ctk.CTk):
             parts.append("NVENC Encoding")
 
         return " | ".join(parts)
+
+    def _get_shader_list(self) -> list:
+        """Get list of available shaders."""
+        shader_dir = get_app_path() / "shaders"
+        if shader_dir.exists():
+            return sorted([f.stem for f in shader_dir.glob("*.glsl")])
+        return ["universe_within"]
+
+    def _refresh_shaders(self):
+        """Refresh the shader list."""
+        current = self.shader_combo.get()
+        shaders = self._get_shader_list()
+        self.shader_combo.configure(values=shaders)
+        # Keep current selection if it still exists
+        if current in shaders:
+            self.shader_combo.set(current)
+        elif shaders:
+            self.shader_combo.set(shaders[0])
 
     def _setup_drag_drop(self):
         """Setup drag and drop for audio files."""
