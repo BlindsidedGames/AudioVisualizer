@@ -1,8 +1,8 @@
 // "Neural Web" - Audio Reactive Network
 // Based on "The Universe Within" by BigWIngs (Shadertoy lscczl)
 //
-// Audio reactivity through rotation and node movement, not zoom/pulse
-// Audio uniforms: bass, mids, highs, volume, beat (all 0.0 - 1.0)
+// Audio reactivity is smooth - no sudden jumps
+// Audio uniforms: bass, mids, highs, volume, beat (all 0.0 - 1.0, pre-smoothed)
 
 #define S(a, b, t) smoothstep(a, b, t)
 #define NUM_LAYERS 4.
@@ -13,14 +13,12 @@ float N21(vec2 p) {
     return fract((a.x + a.y) * a.z);
 }
 
-vec2 GetPos(vec2 id, vec2 offs, float t, float audioOffset) {
+vec2 GetPos(vec2 id, vec2 offs, float t) {
     float n = N21(id + offs);
     float n1 = fract(n * 10.);
     float n2 = fract(n * 100.);
     float a = t + n;
-    // Audio affects how much the nodes move around (connection changes)
-    float movement = 0.4 + audioOffset * 0.2;
-    return offs + vec2(sin(a * n1), cos(a * n2)) * movement;
+    return offs + vec2(sin(a * n1), cos(a * n2)) * .4;
 }
 
 float df_line(in vec2 a, in vec2 b, in vec2 p) {
@@ -41,7 +39,7 @@ float line(vec2 a, vec2 b, vec2 uv) {
     return S(r1, r2, d) * fade;
 }
 
-float NetLayer(vec2 st, float n, float t, float audioOffset) {
+float NetLayer(vec2 st, float n, float t) {
     vec2 id = floor(st) + n;
     st = fract(st) - .5;
 
@@ -49,7 +47,7 @@ float NetLayer(vec2 st, float n, float t, float audioOffset) {
     int i = 0;
     for (float y = -1.; y <= 1.; y++) {
         for (float x = -1.; x <= 1.; x++) {
-            p[i++] = GetPos(id, vec2(x, y), t, audioOffset);
+            p[i++] = GetPos(id, vec2(x, y), t);
         }
     }
 
@@ -86,47 +84,43 @@ float NetLayer(vec2 st, float n, float t, float audioOffset) {
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - iResolution.xy * .5) / iResolution.y;
 
-    // Constant forward time - no audio influence on speed
-    float t = iTime * 0.1;
+    // Use audio_time for smooth audio-reactive animation speed
+    // audio_time accumulates smoothly - never jumps backwards
+    float t = audio_time * 0.15;
 
-    // Rotation reacts to audio - beat adds rotation kick
-    float baseRot = iTime * 0.05;
-    float audioRot = beat * 0.5 + bass * 0.2;  // Audio adds to rotation angle
-    float rotT = baseRot + audioRot;
+    // Rotation based on audio_time - smooth, never jerky
+    float rotT = audio_time * 0.08;
 
     float s = sin(rotT);
     float c = cos(rotT);
     mat2 rot = mat2(c, -s, s, c);
     vec2 st = uv * rot;
 
-    // Audio affects node movement (how much connections change)
-    float audioOffset = bass * 0.5 + volume * 0.3;
-
-    // Render layers - offset each layer so they don't start aligned (no grid)
+    // Render layers - offset so they don't start aligned
     float m = 0.;
     for (float i = 0.; i < 1.; i += 1. / NUM_LAYERS) {
-        // Large offset (7.3) spreads layers apart at start
         float z = fract(t + i + 7.3);
         float size = mix(15., 1., z);
         float fade = S(0., .6, z) * S(1., .8, z);
 
-        m += fade * NetLayer(st * size, i, iTime * 0.5, audioOffset);
+        // Node animation also uses audio_time for consistency
+        m += fade * NetLayer(st * size, i, audio_time * 0.5);
     }
 
-    // Base colors cycle smoothly with rotation
+    // Base colors cycle with audio_time
     vec3 baseCol = vec3(
-        sin(baseRot),
-        cos(baseRot * .4),
-        -sin(baseRot * .24)
+        sin(rotT),
+        cos(rotT * .4),
+        -sin(rotT * .24)
     ) * .4 + .6;
 
-    // Subtle color tinting from audio
+    // Subtle color tinting from audio (these are pre-smoothed now)
     baseCol.r += bass * 0.2;
     baseCol.b += highs * 0.2;
 
     vec3 col = baseCol * m;
 
-    // Gentle brightness on beat
+    // Gentle brightness on beat (pre-smoothed)
     col *= 1.0 + beat * 0.25;
 
     // Vignette
