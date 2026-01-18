@@ -34,7 +34,7 @@ class VisualizerApp(ctk.CTk):
         super().__init__()
 
         self.title("Audio Visualizer")
-        self.geometry("500x900")
+        self.geometry("500x950")
         self.resizable(False, False)
 
         # Set appearance
