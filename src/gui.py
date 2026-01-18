@@ -34,7 +34,7 @@ class VisualizerApp(ctk.CTk):
         super().__init__()
 
         self.title("Audio Visualizer")
-        self.geometry("500x950")
+        self.geometry("500x850")
         self.resizable(False, False)
 
         # Set appearance
@@ -340,41 +340,6 @@ class VisualizerApp(ctk.CTk):
         )
         output_btn.pack(side="right", padx=(10, 0))
 
-        # Render mode section (only show if GPU is available)
-        if self.capabilities["cupy"] or self.capabilities["cuda"]:
-            mode_frame = ctk.CTkFrame(container)
-            mode_frame.pack(fill="x", pady=(0, 15))
-
-            mode_label = ctk.CTkLabel(
-                mode_frame,
-                text="Render Mode",
-                font=ctk.CTkFont(size=14, weight="bold")
-            )
-            mode_label.pack(anchor="w", padx=15, pady=(15, 5))
-
-            mode_row = ctk.CTkFrame(mode_frame, fg_color="transparent")
-            mode_row.pack(fill="x", padx=15, pady=(0, 15))
-
-            self.render_mode = ctk.StringVar(value="gpu")
-
-            gpu_radio = ctk.CTkRadioButton(
-                mode_row,
-                text="GPU Accelerated (faster)",
-                variable=self.render_mode,
-                value="gpu"
-            )
-            gpu_radio.pack(side="left", padx=(0, 20))
-
-            std_radio = ctk.CTkRadioButton(
-                mode_row,
-                text="Standard (compatibility)",
-                variable=self.render_mode,
-                value="standard"
-            )
-            std_radio.pack(side="left")
-        else:
-            self.render_mode = ctk.StringVar(value="standard")
-
         # Progress section
         progress_frame = ctk.CTkFrame(container)
         progress_frame.pack(fill="x", pady=(0, 15))
@@ -405,16 +370,10 @@ class VisualizerApp(ctk.CTk):
 
     def _get_status_text(self) -> str:
         """Get status text based on capabilities."""
-        parts = []
-        if self.capabilities["cupy"]:
-            parts.append("GPU Accelerated (CuPy)")
-        elif self.capabilities["cuda"]:
-            parts.append("GPU Accelerated (CUDA)")
-        else:
-            parts.append("Standard Mode")
+        parts = ["Standard Mode"]
 
         if self.capabilities["nvenc"]:
-            parts.append("NVENC")
+            parts.append("NVENC Encoding")
 
         return " | ".join(parts)
 
@@ -525,23 +484,8 @@ Requires an NVIDIA GPU with CUDA support."""
 
         try:
             from .audio import AudioAnalyzer
-
-            # Check user's render mode selection
-            use_gpu = self.render_mode.get() == "gpu"
-
-            # Choose renderer based on capabilities and user selection
-            if use_gpu and self.capabilities["cupy"]:
-                from .renderer_gpudirect import GPUDirectRenderer as Renderer
-                from .renderer_gpudirect import GPUDirectExporter as Exporter
-                renderer_mode = "gpudirect"
-            elif use_gpu and self.capabilities["cuda"]:
-                from .renderer_cuda import CudaShaderRenderer as Renderer
-                from .renderer_cuda import HybridExporter as Exporter
-                renderer_mode = "cuda"
-            else:
-                from .renderer import ShaderRenderer as Renderer
-                from .exporter import VideoExporter as Exporter
-                renderer_mode = "standard"
+            from .renderer import ShaderRenderer as Renderer
+            from .exporter import VideoExporter as Exporter
 
             self._update_progress("Analyzing audio...", 0)
 
@@ -570,27 +514,15 @@ Requires an NVIDIA GPU with CUDA support."""
             renderer.load_shader(str(shader_path))
 
             # Initialize exporter
-            if renderer_mode in ("gpudirect", "cuda"):
-                exporter = Exporter(
-                    output_path=output_path,
-                    width=width,
-                    height=height,
-                    fps=60,
-                    audio_path=self.audio_path,
-                    codec="h264",
-                    use_nvenc=self.capabilities["nvenc"],
-                    bitrate="10M",
-                )
-            else:
-                exporter = Exporter(
-                    output_path=output_path,
-                    width=width,
-                    height=height,
-                    fps=60,
-                    audio_path=self.audio_path,
-                    codec="h264",
-                    bitrate="10M",
-                )
+            exporter = Exporter(
+                output_path=output_path,
+                width=width,
+                height=height,
+                fps=60,
+                audio_path=self.audio_path,
+                codec="h264",
+                bitrate="10M",
+            )
 
             exporter.start()
 
@@ -615,11 +547,7 @@ Requires an NVIDIA GPU with CUDA support."""
                 audio_data = audio.get_frame_data(frame)
                 frame_time = audio_data['time']
 
-                if renderer_mode in ("gpudirect", "cuda"):
-                    pixels = renderer.render_frame(frame_time, frame, audio_data)
-                else:
-                    pixels = renderer.render_frame_rgb(frame_time, frame, audio_data)
-
+                pixels = renderer.render_frame_rgb(frame_time, frame, audio_data)
                 exporter.write_frame(pixels)
 
                 # Update progress every 0.1 seconds (not frame count)
