@@ -96,12 +96,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     // === TIME - NEVER GOES BACKWARDS ===
     // Use iTime for consistent forward motion
-    // audio_time accumulates based on energy but also never reverses
-    float t = iTime * 0.2;
+    // Add offset so layers start spread out (not all at same phase = grid look)
+    float t = iTime * 0.07 + 50.0;  // Slower speed + offset to start "initialized"
 
     // === ROTATION - SMOOTH AND CONSISTENT ===
     // Base rotation always moves forward, slight speed variation from volume
-    float rotSpeed = 0.08 + volume * 0.04;  // Subtle speed change, not jerky
+    float rotSpeed = 0.03 + volume * 0.02;  // Slower rotation
     float rotT = iTime * rotSpeed;
 
     float s = sin(rotT);
