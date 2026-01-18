@@ -34,7 +34,7 @@ class VisualizerApp(ctk.CTk):
         super().__init__()
 
         self.title("Audio Visualizer")
-        self.geometry("500x820")
+        self.geometry("500x900")
         self.resizable(False, False)
 
         # Set appearance
@@ -266,6 +266,49 @@ class VisualizerApp(ctk.CTk):
         )
         self.shader_combo.set(shaders[0] if shaders else "universe_within")
         self.shader_combo.pack(anchor="w", padx=15, pady=(0, 15))
+
+        # Duration section (for preview/testing)
+        duration_frame = ctk.CTkFrame(container)
+        duration_frame.pack(fill="x", pady=(0, 15))
+
+        duration_label = ctk.CTkLabel(
+            duration_frame,
+            text="Duration",
+            font=ctk.CTkFont(size=14, weight="bold")
+        )
+        duration_label.pack(anchor="w", padx=15, pady=(15, 5))
+
+        duration_row = ctk.CTkFrame(duration_frame, fg_color="transparent")
+        duration_row.pack(fill="x", padx=15, pady=(0, 15))
+
+        self.duration_var = ctk.StringVar(value="full")
+
+        full_radio = ctk.CTkRadioButton(
+            duration_row,
+            text="Full song",
+            variable=self.duration_var,
+            value="full"
+        )
+        full_radio.pack(side="left", padx=(0, 15))
+
+        preview_radio = ctk.CTkRadioButton(
+            duration_row,
+            text="Preview:",
+            variable=self.duration_var,
+            value="preview"
+        )
+        preview_radio.pack(side="left")
+
+        self.preview_seconds = ctk.CTkEntry(
+            duration_row,
+            width=50,
+            placeholder_text="10"
+        )
+        self.preview_seconds.insert(0, "10")
+        self.preview_seconds.pack(side="left", padx=(5, 0))
+
+        seconds_label = ctk.CTkLabel(duration_row, text="seconds")
+        seconds_label.pack(side="left", padx=(5, 0))
 
         # Output folder section
         output_frame = ctk.CTkFrame(container)
@@ -509,7 +552,12 @@ Requires an NVIDIA GPU with CUDA support."""
             # Setup output path (use user-selected directory)
             self.output_dir.mkdir(exist_ok=True)
             audio_name = Path(self.audio_path).stem
-            output_path = str(self.output_dir / f"{audio_name}_visualized.mp4")
+
+            # Add preview suffix if not rendering full song
+            if self.duration_var.get() == "preview":
+                output_path = str(self.output_dir / f"{audio_name}_preview.mp4")
+            else:
+                output_path = str(self.output_dir / f"{audio_name}_visualized.mp4")
 
             # Setup shader
             app_path = get_app_path()
@@ -546,7 +594,16 @@ Requires an NVIDIA GPU with CUDA support."""
 
             exporter.start()
 
+            # Determine frame count based on duration setting
             total_frames = audio.frame_count
+            if self.duration_var.get() == "preview":
+                try:
+                    preview_secs = float(self.preview_seconds.get())
+                    preview_frames = int(preview_secs * 60)  # 60 fps
+                    total_frames = min(preview_frames, total_frames)
+                except ValueError:
+                    pass  # Use full length if invalid input
+
             self._update_progress(f"Rendering {total_frames} frames...", 0.1)
 
             # Render loop with timing
