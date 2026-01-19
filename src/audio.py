@@ -23,6 +23,12 @@ class AudioAnalyzer:
         self.volume = None
         self.beat = None  # Beat detection channel
 
+        # Envelope follower data (AR envelope with separate attack/release)
+        self.envelope = None    # Master envelope (all bands)
+        self.bass_env = None    # Bass-only envelope
+        self.transient = None   # Fast attack, fast release (catches hits)
+        self.sustain = None     # Slow attack, slow release (captures held energy)
+
     def load(self):
         """Load audio file and compute frequency bands for each frame."""
         print(f"Loading audio: {self.audio_path}")
@@ -94,6 +100,10 @@ class AudioAnalyzer:
         print("Computing audio time...")
         self._compute_audio_time()
 
+        # Compute envelope followers with different time characteristics
+        print("Computing envelopes...")
+        self._compute_envelopes()
+
         print("Frequency bands computed.")
 
     def _compute_audio_time(self):
@@ -114,6 +124,31 @@ class AudioAnalyzer:
         for i in range(self.frame_count):
             accumulated += dt * speed[i]
             self.audio_time[i] = accumulated
+
+    def _compute_envelopes(self):
+        """
+        Compute envelope followers with different attack/release characteristics.
+
+        Creates four envelope types:
+        - envelope: Master AR envelope (all bands summed), attack 5ms, release 150ms
+        - bass_env: Bass-only envelope, attack 10ms, release 200ms (slower for sub feel)
+        - transient: Fast attack/release for punchy hits, attack 2ms, release 50ms
+        - sustain: Slow attack/release for held energy, attack 50ms, release 300ms
+        """
+        # Combined signal for master envelope (weighted sum)
+        combined = self.bass * 0.4 + self.mids * 0.3 + self.highs * 0.2 + self.beat * 0.1
+
+        # Master envelope: balanced attack/release
+        self.envelope = self._compute_envelope(combined, attack_ms=5, release_ms=150)
+
+        # Bass envelope: slower for that sub feel
+        self.bass_env = self._compute_envelope(self.bass, attack_ms=10, release_ms=200)
+
+        # Transient: fast attack, fast release - catches individual hits
+        self.transient = self._compute_envelope(combined, attack_ms=2, release_ms=50)
+
+        # Sustain: slow attack, slow release - captures held energy, ignores transients
+        self.sustain = self._compute_envelope(combined, attack_ms=50, release_ms=300)
 
     def _normalize(self, data: np.ndarray) -> np.ndarray:
         """Normalize array to 0-1 range."""
@@ -152,16 +187,55 @@ class AudioAnalyzer:
             smoothed[i] = alpha * data[i] + (1 - alpha) * smoothed[i-1]
         return smoothed
 
+    def _compute_envelope(self, signal: np.ndarray, attack_ms: float = 5, release_ms: float = 150) -> np.ndarray:
+        """
+        Compute envelope with separate attack/release times.
+        Similar to a compressor's detector circuit.
+
+        Args:
+            signal: Input signal (0-1 normalized)
+            attack_ms: Attack time in milliseconds (how fast it rises)
+            release_ms: Release time in milliseconds (how fast it falls)
+
+        Returns:
+            Envelope follower output (0-1)
+        """
+        # Convert ms to coefficient (time constant)
+        # coef = exp(-1 / (fps * time_in_seconds))
+        attack_coef = np.exp(-1.0 / (self.fps * attack_ms / 1000.0))
+        release_coef = np.exp(-1.0 / (self.fps * release_ms / 1000.0))
+
+        envelope = np.zeros_like(signal)
+        envelope[0] = signal[0]
+
+        for i in range(1, len(signal)):
+            if signal[i] > envelope[i-1]:
+                # Attack - fast rise (use attack coefficient)
+                coef = attack_coef
+            else:
+                # Release - slow decay (use release coefficient)
+                coef = release_coef
+            envelope[i] = coef * envelope[i-1] + (1.0 - coef) * signal[i]
+
+        return envelope
+
     def get_frame_data(self, frame: int) -> dict:
         """Get audio data for a specific frame."""
         if frame >= self.frame_count:
             frame = self.frame_count - 1
         return {
+            # Raw frequency bands
             'bass': float(self.bass[frame]),
             'mids': float(self.mids[frame]),
             'highs': float(self.highs[frame]),
             'volume': float(self.volume[frame]),
             'beat': float(self.beat[frame]),
+            # Time values
             'time': frame / self.fps,
             'audio_time': float(self.audio_time[frame]),
+            # Envelope followers (AR envelopes with proper attack/release)
+            'envelope': float(self.envelope[frame]),      # Master envelope
+            'bass_env': float(self.bass_env[frame]),      # Bass-only envelope
+            'transient': float(self.transient[frame]),    # Fast attack/release
+            'sustain': float(self.sustain[frame]),        # Slow attack/release
         }

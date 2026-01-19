@@ -105,13 +105,19 @@ uniform float iTime;
 uniform float iTimeDelta;
 uniform int iFrame;
 
-// Audio uniforms
+// Audio uniforms - raw frequency bands
 uniform float bass;
 uniform float mids;
 uniform float highs;
 uniform float volume;
 uniform float beat;
 uniform float audio_time;
+
+// Envelope followers (AR envelopes with proper attack/release times)
+uniform float envelope;   // Master envelope (all bands), attack 5ms, release 150ms
+uniform float bass_env;   // Bass-only envelope, attack 10ms, release 200ms
+uniform float transient;  // Fast attack/release (2ms/50ms) - catches hits
+uniform float sustain;    // Slow attack/release (50ms/300ms) - held energy
 
 // Effect uniforms
 uniform float zoom;
@@ -159,7 +165,7 @@ void main() {
         if 'iFrame' in self.program:
             self.program['iFrame'].value = frame
 
-        # Audio uniforms
+        # Audio uniforms - raw frequency bands
         if 'bass' in self.program:
             self.program['bass'].value = audio_data.get('bass', 0.0)
         if 'mids' in self.program:
@@ -172,6 +178,16 @@ void main() {
             self.program['beat'].value = audio_data.get('beat', 0.0)
         if 'audio_time' in self.program:
             self.program['audio_time'].value = offset_audio_time
+
+        # Envelope followers (AR envelopes with proper attack/release)
+        if 'envelope' in self.program:
+            self.program['envelope'].value = audio_data.get('envelope', 0.0)
+        if 'bass_env' in self.program:
+            self.program['bass_env'].value = audio_data.get('bass_env', 0.0)
+        if 'transient' in self.program:
+            self.program['transient'].value = audio_data.get('transient', 0.0)
+        if 'sustain' in self.program:
+            self.program['sustain'].value = audio_data.get('sustain', 0.0)
 
         # Effect uniforms
         if 'zoom' in self.program:
