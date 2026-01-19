@@ -29,6 +29,10 @@ class AudioAnalyzer:
         self.transient = None   # Fast attack, fast release (catches hits)
         self.sustain = None     # Slow attack, slow release (captures held energy)
 
+        # Configurable envelope times (can be set before calling load())
+        self.envelope_attack_ms = 5.0
+        self.envelope_release_ms = 150.0
+
     def load(self):
         """Load audio file and compute frequency bands for each frame."""
         print(f"Loading audio: {self.audio_path}")
@@ -130,19 +134,27 @@ class AudioAnalyzer:
         Compute envelope followers with different attack/release characteristics.
 
         Creates four envelope types:
-        - envelope: Master AR envelope (all bands summed), attack 5ms, release 150ms
-        - bass_env: Bass-only envelope, attack 10ms, release 200ms (slower for sub feel)
+        - envelope: Master AR envelope (all bands summed), uses configurable attack/release
+        - bass_env: Bass-only envelope, uses 2x configurable attack, 1.33x release (slower for sub feel)
         - transient: Fast attack/release for punchy hits, attack 2ms, release 50ms
         - sustain: Slow attack/release for held energy, attack 50ms, release 300ms
         """
         # Combined signal for master envelope (weighted sum)
         combined = self.bass * 0.4 + self.mids * 0.3 + self.highs * 0.2 + self.beat * 0.1
 
-        # Master envelope: balanced attack/release
-        self.envelope = self._compute_envelope(combined, attack_ms=5, release_ms=150)
+        # Master envelope: uses configurable attack/release times
+        self.envelope = self._compute_envelope(
+            combined,
+            attack_ms=self.envelope_attack_ms,
+            release_ms=self.envelope_release_ms
+        )
 
-        # Bass envelope: slower for that sub feel
-        self.bass_env = self._compute_envelope(self.bass, attack_ms=10, release_ms=200)
+        # Bass envelope: slower for that sub feel (scales with user settings)
+        self.bass_env = self._compute_envelope(
+            self.bass,
+            attack_ms=self.envelope_attack_ms * 2,
+            release_ms=self.envelope_release_ms * 1.33
+        )
 
         # Transient: fast attack, fast release - catches individual hits
         self.transient = self._compute_envelope(combined, attack_ms=2, release_ms=50)
