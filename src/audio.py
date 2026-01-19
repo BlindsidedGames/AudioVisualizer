@@ -75,20 +75,19 @@ class AudioAnalyzer:
         self.highs = self._resample(self.highs, self.frame_count)
         self.volume = self._resample(self.volume, self.frame_count)
 
-        # Apply smoothing to prevent jittery visuals
-        # Heavier smoothing (window=8) for smooth transitions
-        self.bass = self._smooth(self.bass, window_size=8)
-        self.mids = self._smooth(self.mids, window_size=8)
-        self.highs = self._smooth(self.highs, window_size=8)
-        self.volume = self._smooth(self.volume, window_size=8)
+        # Light smoothing - keeps reactivity while reducing jitter
+        self.bass = self._smooth(self.bass, window_size=3)
+        self.mids = self._smooth(self.mids, window_size=3)
+        self.highs = self._smooth(self.highs, window_size=3)
+        self.volume = self._smooth(self.volume, window_size=3)
 
         # Detect beats/onsets for punchy response
         print("Detecting beats...")
         onset_env = librosa.onset.onset_strength(y=self.y, sr=self.sr, hop_length=hop)
         onset_env = self._normalize_dynamic(onset_env)
         self.beat = self._resample(onset_env, self.frame_count)
-        # Smooth beats too but lighter so they stay punchy
-        self.beat = self._smooth(self.beat, window_size=4)
+        # Minimal smoothing for beats - keep them punchy
+        self.beat = self._smooth(self.beat, window_size=2)
 
         # Compute accumulated "audio time" that speeds up/slows down with energy
         # This creates smooth acceleration/deceleration instead of jumps

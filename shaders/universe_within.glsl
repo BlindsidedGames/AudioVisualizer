@@ -88,6 +88,10 @@ float NetLayer(vec2 st, float n, float t) {
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - iResolution.xy * .5) / iResolution.y;
 
+    // Apply zoom (zoom uniform from app, default 1.0)
+    float z_factor = max(zoom, 0.1);  // Prevent division by zero
+    uv *= z_factor;
+
     // Use pre-computed audio_time which accumulates smoothly based on audio energy
     // Speed multiplier: 0.75x (default/slow-ish)
     float t = audio_time * 0.75;
@@ -122,8 +126,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     vec3 col = baseCol * m;
 
-    // Vignette
-    col *= 1. - dot(uv, uv);
+    // Vignette - adjusted for zoom
+    col *= 1. - dot(uv, uv) / (z_factor * z_factor);
+
+    // Apply fade (for fade-out at end of video)
+    col *= fade;
 
     fragColor = vec4(col, 1);
 }

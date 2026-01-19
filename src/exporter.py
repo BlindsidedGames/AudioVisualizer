@@ -2,8 +2,16 @@
 
 import subprocess
 import shutil
+import sys
 import numpy as np
 from pathlib import Path
+from threading import Thread
+from queue import Queue
+
+# Hide console window on Windows
+SUBPROCESS_FLAGS = 0
+if sys.platform == "win32":
+    SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
 
 
 def _find_ffmpeg() -> str:
@@ -46,6 +54,12 @@ class VideoExporter:
         self.use_nvenc = use_nvenc
         self.bitrate = bitrate
         self.process = None
+
+        # Threaded encoding for better performance
+        self.frame_queue = Queue(maxsize=32)
+        self.encoding_thread = None
+        self.running = False
+        self.frames_written = 0
 
     def _get_encoder(self) -> str:
         """Get the appropriate encoder based on settings."""
@@ -108,21 +122,46 @@ class VideoExporter:
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
+            bufsize=self.width * self.height * 3 * 16,  # Large buffer for performance
+            creationflags=SUBPROCESS_FLAGS,
         )
 
+        # Start encoding thread
+        self.running = True
+        self.encoding_thread = Thread(target=self._encoding_loop, daemon=True)
+        self.encoding_thread.start()
+
+    def _encoding_loop(self):
+        """Background thread that writes frames to FFmpeg."""
+        while self.running or not self.frame_queue.empty():
+            try:
+                frame = self.frame_queue.get(timeout=0.5)
+                if frame is not None:
+                    self.process.stdin.write(frame.tobytes())
+                    self.frames_written += 1
+            except:
+                continue
+
     def write_frame(self, frame: np.ndarray):
-        """Write a frame to the video."""
+        """Queue a frame for encoding (threaded)."""
         if self.process is None:
             raise RuntimeError("Exporter not started. Call start() first.")
-        self.process.stdin.write(frame.tobytes())
+        # Make a copy since the renderer reuses the buffer
+        self.frame_queue.put(frame.copy())
 
     def finish(self):
         """Finish encoding and close the file."""
+        # Stop the encoding thread
+        self.running = False
+
+        if self.encoding_thread:
+            self.encoding_thread.join(timeout=120)
+
         if self.process:
             self.process.stdin.close()
 
             # Use communicate() to avoid deadlock from full stderr pipe
-            _, stderr = self.process.communicate(timeout=60)
+            _, stderr = self.process.communicate(timeout=180)
 
             # Check for errors
             if self.process.returncode != 0:

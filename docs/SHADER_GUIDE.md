@@ -47,6 +47,12 @@ These variables are automatically provided to your shader:
 | `beat` | `float` | 0.0 - 1.0 | Beat detection (spikes on beats) |
 | `audio_time` | `float` | 0.0+ | Accumulated time that speeds up with audio energy |
 
+### Effect Uniforms
+| Uniform | Type | Range | Description |
+|---------|------|-------|-------------|
+| `zoom` | `float` | 0.5 - 4.0 | Zoom level from app slider (1.0 = default, >1 = zoomed out) |
+| `fade` | `float` | 0.0 - 1.0 | Fade multiplier (1.0 = full brightness, fades to 0.0 at end of video) |
+
 ## Audio Reactivity Examples
 
 ### Basic Color Response
@@ -99,8 +105,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
 
     // Zoom in when bass hits
-    float zoom = 1.0 + bass * 0.5;
-    uv *= zoom;
+    float bassZoom = 1.0 + bass * 0.5;
+    uv *= bassZoom;
 
     // Your pattern here...
     float pattern = sin(length(uv) * 20.0 - iTime * 2.0);
@@ -108,6 +114,37 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     fragColor = vec4(vec3(pattern), 1.0);
 }
 ```
+
+### Using the App Zoom Slider
+The app provides a `zoom` uniform (0.5 to 4.0) controlled by a slider. To support it:
+```glsl
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
+
+    // Apply zoom from app slider (default 1.0)
+    float z_factor = max(zoom, 0.1);  // Prevent division by zero
+    uv *= z_factor;
+
+    // Your visualization here...
+    vec3 col = vec3(length(uv));
+
+    // Adjust vignette for zoom level
+    col *= 1.0 - dot(uv, uv) / (z_factor * z_factor);
+
+    fragColor = vec4(col, 1.0);
+}
+```
+
+**Zoom Values:**
+- `zoom = 0.5` → Zoomed in (see less, bigger details)
+- `zoom = 1.0` → Default view
+- `zoom = 2.0` → Zoomed out (see 4x more content)
+- `zoom = 4.0` → Maximum zoom out
+
+**Tips for Zoom Support:**
+- Scale line thickness inversely: `thickness / z_factor`
+- Adjust vignette: `dot(uv, uv) / (z_factor * z_factor)`
+- Scale particle/dot sizes inversely with zoom
 
 ## Tweaking Existing Shaders
 
@@ -193,10 +230,15 @@ Copy an existing shader or use this template:
 ```glsl
 // My Custom Shader
 // Audio uniforms: bass, mids, highs, volume, beat, audio_time
+// Effect uniforms: zoom (0.5-4.0, default 1.0), fade (0.0-1.0, for end fade-out)
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     // Centered UV coordinates (-0.5 to 0.5 on Y axis)
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
+
+    // Apply zoom from app slider
+    float z_factor = max(zoom, 0.1);
+    uv *= z_factor;
 
     // Animation time (speeds up with audio)
     float t = audio_time * 0.5;
@@ -214,6 +256,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     // Beat flash
     col *= 1.0 + beat * 0.5;
+
+    // Vignette (adjusted for zoom)
+    col *= 1.0 - dot(uv, uv) / (z_factor * z_factor);
+
+    // Apply fade (for smooth fade-out at end of video)
+    col *= fade;
 
     // Output
     fragColor = vec4(col, 1.0);

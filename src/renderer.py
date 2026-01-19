@@ -8,6 +8,9 @@ from pathlib import Path
 class ShaderRenderer:
     """Renders GLSL shaders with audio-reactive uniforms using GPU acceleration."""
 
+    # Time offset to skip shader initialization (avoids grid pattern at start)
+    TIME_OFFSET = 10.0
+
     def __init__(self, width: int, height: int, use_gpu: bool = True):
         self.width = width
         self.height = height
@@ -37,6 +40,9 @@ class ShaderRenderer:
 
         self.program = None
         self.vao = None
+
+        # Pre-allocate output buffer to avoid allocation per frame
+        self.output_buffer = np.empty((height, width, 3), dtype=np.uint8)
 
     def _init_gpu_context(self):
         """Initialize a GPU-accelerated context using pyglet."""
@@ -107,6 +113,10 @@ uniform float volume;
 uniform float beat;
 uniform float audio_time;
 
+// Effect uniforms
+uniform float zoom;
+uniform float fade;  // 0.0 = black, 1.0 = full brightness
+
 out vec4 _fragColor;
 """
         # Replace mainImage signature - rename parameter to avoid conflict with output
@@ -132,16 +142,20 @@ void main() {
 """
         return header + shader_code + footer
 
-    def render_frame(self, time: float, frame: int, audio_data: dict) -> bytes:
+    def render_frame(self, time: float, frame: int, audio_data: dict, zoom: float = 1.0, fade: float = 1.0) -> bytes:
         """Render a single frame and return as RGB bytes."""
         self.fbo.use()
         self.ctx.clear(0.0, 0.0, 0.0, 1.0)
+
+        # Apply time offset to skip shader initialization phase
+        offset_time = time + self.TIME_OFFSET
+        offset_audio_time = audio_data.get('audio_time', 0.0) + self.TIME_OFFSET
 
         # Set uniforms
         if 'iResolution' in self.program:
             self.program['iResolution'].value = (float(self.width), float(self.height))
         if 'iTime' in self.program:
-            self.program['iTime'].value = time
+            self.program['iTime'].value = offset_time
         if 'iFrame' in self.program:
             self.program['iFrame'].value = frame
 
@@ -157,7 +171,13 @@ void main() {
         if 'beat' in self.program:
             self.program['beat'].value = audio_data.get('beat', 0.0)
         if 'audio_time' in self.program:
-            self.program['audio_time'].value = audio_data.get('audio_time', 0.0)
+            self.program['audio_time'].value = offset_audio_time
+
+        # Effect uniforms
+        if 'zoom' in self.program:
+            self.program['zoom'].value = zoom
+        if 'fade' in self.program:
+            self.program['fade'].value = fade
 
         # Render
         self.vao.render(moderngl.TRIANGLE_STRIP)
@@ -166,13 +186,15 @@ void main() {
         data = self.fbo.color_attachments[0].read()
         return data
 
-    def render_frame_rgb(self, time: float, frame: int, audio_data: dict) -> np.ndarray:
+    def render_frame_rgb(self, time: float, frame: int, audio_data: dict, zoom: float = 1.0, fade: float = 1.0) -> np.ndarray:
         """Render a frame and return as numpy RGB array."""
-        raw = self.render_frame(time, frame, audio_data)
+        raw = self.render_frame(time, frame, audio_data, zoom, fade)
         # Convert from RGBA to RGB, flip vertically
+        # Use pre-allocated buffer and avoid creating new arrays
         img = np.frombuffer(raw, dtype=np.uint8).reshape(self.height, self.width, 4)
-        img = np.flip(img, axis=0)  # Flip vertically
-        return img[:, :, :3]  # Drop alpha
+        # Flip and extract RGB into pre-allocated buffer
+        np.copyto(self.output_buffer, img[::-1, :, :3])
+        return self.output_buffer
 
     def close(self):
         """Clean up OpenGL resources."""

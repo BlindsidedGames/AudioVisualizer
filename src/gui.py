@@ -45,6 +45,7 @@ class VisualizerApp(ctk.CTk):
         self.audio_path = None
         self.output_dir = get_output_path()
         self.rendering = False
+        self.stop_requested = False
         self.render_thread = None
 
         # Detect capabilities
@@ -277,6 +278,28 @@ class VisualizerApp(ctk.CTk):
         )
         refresh_btn.pack(side="left", padx=(10, 0))
 
+        # Zoom section
+        zoom_row = ctk.CTkFrame(shader_frame, fg_color="transparent")
+        zoom_row.pack(fill="x", padx=15, pady=(0, 15))
+
+        zoom_label = ctk.CTkLabel(zoom_row, text="Zoom:")
+        zoom_label.pack(side="left")
+
+        self.zoom_var = ctk.DoubleVar(value=1.0)
+        self.zoom_slider = ctk.CTkSlider(
+            zoom_row,
+            from_=0.5,
+            to=4.0,
+            number_of_steps=35,  # 0.1 increments
+            variable=self.zoom_var,
+            command=self._on_zoom_change,
+            width=150
+        )
+        self.zoom_slider.pack(side="left", padx=(10, 10))
+
+        self.zoom_value_label = ctk.CTkLabel(zoom_row, text="1.0x", width=40)
+        self.zoom_value_label.pack(side="left")
+
         # Duration section (for preview/testing)
         duration_frame = ctk.CTkFrame(container)
         duration_frame.pack(fill="x", pady=(0, 15))
@@ -380,12 +403,9 @@ class VisualizerApp(ctk.CTk):
 
     def _get_status_text(self) -> str:
         """Get status text based on capabilities."""
-        parts = ["Standard Mode"]
-
         if self.capabilities["nvenc"]:
-            parts.append("NVENC Encoding")
-
-        return " | ".join(parts)
+            return "NVENC Encoding"
+        return ""
 
     def _get_shader_list(self) -> list:
         """Get list of available shaders."""
@@ -404,6 +424,10 @@ class VisualizerApp(ctk.CTk):
             self.shader_combo.set(current)
         elif shaders:
             self.shader_combo.set(shaders[0])
+
+    def _on_zoom_change(self, value):
+        """Update zoom label when slider changes."""
+        self.zoom_value_label.configure(text=f"{value:.1f}x")
 
     def _setup_drag_drop(self):
         """Setup drag and drop for audio files."""
@@ -479,6 +503,8 @@ Requires an NVIDIA GPU with CUDA support."""
     def _start_render(self):
         """Start the rendering process."""
         if self.rendering:
+            # If already rendering, this acts as a stop button
+            self._stop_render()
             return
 
         if not self.audio_path:
@@ -493,22 +519,34 @@ Requires an NVIDIA GPU with CUDA support."""
             return
 
         self.rendering = True
-        self.render_btn.configure(state="disabled", text="Rendering...")
+        self.stop_requested = False
+        self.render_btn.configure(text="Stop Render", fg_color="#8B0000", hover_color="#A52A2A")
         self.progress_bar.set(0)
+
+        # Capture zoom value before starting thread
+        zoom = self.zoom_var.get()
 
         # Start render in background thread
         self.render_thread = Thread(
             target=self._render_worker,
-            args=(width, height),
+            args=(width, height, zoom),
             daemon=True
         )
         self.render_thread.start()
 
-    def _render_worker(self, width: int, height: int):
+    def _stop_render(self):
+        """Request the render to stop."""
+        if self.rendering:
+            self.stop_requested = True
+            self.render_btn.configure(state="disabled", text="Stopping...")
+            self._update_progress("Stopping render...", self.progress_bar.get())
+
+    def _render_worker(self, width: int, height: int, zoom: float = 1.0):
         """Background worker for rendering."""
         import traceback
         renderer = None
         exporter = None
+        was_stopped = False
 
         try:
             from .audio import AudioAnalyzer
@@ -524,12 +562,13 @@ Requires an NVIDIA GPU with CUDA support."""
             # Setup output path (use user-selected directory)
             self.output_dir.mkdir(exist_ok=True)
             audio_name = Path(self.audio_path).stem
+            shader_name = self.shader_combo.get()
 
-            # Add preview suffix if not rendering full song
+            # Add shader name and preview suffix if not rendering full song
             if self.duration_var.get() == "preview":
-                output_path = str(self.output_dir / f"{audio_name}_preview.mp4")
+                output_path = str(self.output_dir / f"{audio_name}_{shader_name}_preview.mp4")
             else:
-                output_path = str(self.output_dir / f"{audio_name}_visualized.mp4")
+                output_path = str(self.output_dir / f"{audio_name}_{shader_name}.mp4")
 
             # Setup shader
             app_path = get_app_path()
@@ -566,16 +605,31 @@ Requires an NVIDIA GPU with CUDA support."""
 
             self._update_progress(f"Rendering {total_frames} frames...", 0.1)
 
+            # Fade out duration (1 second = 60 frames at 60fps)
+            fade_out_frames = 60
+
             # Render loop with timing
             import time
             start_time = time.time()
             last_update = start_time
 
             for frame in range(total_frames):
+                # Check if stop was requested
+                if self.stop_requested:
+                    was_stopped = True
+                    break
+
                 audio_data = audio.get_frame_data(frame)
                 frame_time = audio_data['time']
 
-                pixels = renderer.render_frame_rgb(frame_time, frame, audio_data)
+                # Calculate fade (1.0 = full brightness, 0.0 = black)
+                frames_remaining = total_frames - frame - 1
+                if frames_remaining < fade_out_frames:
+                    fade = frames_remaining / fade_out_frames
+                else:
+                    fade = 1.0
+
+                pixels = renderer.render_frame_rgb(frame_time, frame, audio_data, zoom, fade)
                 exporter.write_frame(pixels)
 
                 # Update progress every 0.1 seconds (not frame count)
@@ -591,16 +645,27 @@ Requires an NVIDIA GPU with CUDA support."""
                         progress
                     )
 
-            self._update_progress("Finalizing video...", 0.95)
-            success = exporter.finish()
-            exporter = None  # Mark as cleaned up
-            renderer.close()
-            renderer = None  # Mark as cleaned up
-
-            if success:
-                self._update_progress(f"Done! Saved to outputs/", 1.0)
+            if was_stopped:
+                self._update_progress("Render stopped by user", 0)
+                # Clean up without saving partial video
+                exporter.running = False  # Stop the encoding thread
+                if exporter.process:
+                    exporter.process.stdin.close()
+                    exporter.process.terminate()
+                exporter = None
+                renderer.close()
+                renderer = None
             else:
-                self._update_progress("Encoding failed", 0)
+                self._update_progress("Finalizing video...", 0.95)
+                success = exporter.finish()
+                exporter = None  # Mark as cleaned up
+                renderer.close()
+                renderer = None  # Mark as cleaned up
+
+                if success:
+                    self._update_progress(f"Done! Saved to outputs/", 1.0)
+                else:
+                    self._update_progress("Encoding failed", 0)
 
         except Exception as e:
             error_msg = f"Error: {str(e)}"
@@ -623,8 +688,11 @@ Requires an NVIDIA GPU with CUDA support."""
                     print(f"Error during exporter cleanup: {cleanup_err}")
 
             self.rendering = False
+            self.stop_requested = False
             self.after(0, lambda: self.render_btn.configure(
-                state="normal", text="Start Render"
+                state="normal", text="Start Render",
+                fg_color=("#3B8ED0", "#1F6AA5"),  # Default CTkButton blue
+                hover_color=("#36719F", "#144870")
             ))
 
     def _update_progress(self, text: str, value: float):
